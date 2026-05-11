@@ -30,6 +30,35 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     table.results th, table.results td { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
     table.results thead th { position: sticky; top: 0; background: #f8fafc; }
+    .hint-trigger {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.1rem; height: 1.1rem; border-radius: 9999px;
+      background: #e0e7ff; color: #3730a3; font-size: 0.7rem; font-weight: 700;
+      cursor: help; border: 1px solid #c7d2fe; margin-left: 0.35rem;
+      line-height: 1; vertical-align: middle;
+    }
+    .hint-trigger:hover { background: #c7d2fe; }
+    .hint-popover {
+      display: none; position: absolute; z-index: 70;
+      width: min(380px, 92vw);
+      background: white; border: 1px solid #cbd5e1; border-radius: 0.5rem;
+      padding: 0.85rem 1rem; box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+      font-size: 0.82rem; line-height: 1.45; color: #1f2937;
+      text-align: left; font-weight: normal;
+    }
+    .hint-popover.open { display: block; }
+    .hint-popover h5 { font-weight: 700; margin-bottom: 0.35rem; color: #0f172a; }
+    .hint-popover p { margin: 0.35rem 0; }
+    .hint-popover code, .hint-popover .formula {
+      background: #f1f5f9; border-radius: 0.25rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+    }
+    .hint-popover code { padding: 0.05em 0.3em; }
+    .hint-popover .formula { display: block; padding: 0.4rem 0.6rem; margin: 0.35rem 0; }
+    .hint-popover ul { margin: 0.3rem 0; padding-left: 1.1rem; list-style: disc; }
+    .hint-popover li { margin: 0.15rem 0; }
+    .hint-popover .small { font-size: 0.75rem; color: #64748b; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -52,26 +81,46 @@
 
   <!-- =====================  HOME  ===================== -->
   <section id="page-home">
+    <div class="card mb-6 bg-blue-50 border-blue-200">
+      <div class="text-xs uppercase tracking-wide text-blue-700 font-semibold">FSCT 7910 &mdash; NET</div>
+      <div class="text-lg font-semibold text-slate-800 mt-1">Research Methodology and Measurement Models</div>
+      <div class="text-sm text-slate-600 mt-2">Statistics project by <strong>Muskan Walia</strong>, <strong>Saif Chhipa</strong>, <strong>Hanson Ho</strong>, and <strong>Satinder Sandhu</strong>.</div>
+    </div>
+
     <h2 class="text-2xl font-bold mb-2">Pick a mode</h2>
     <p class="text-slate-600 mb-6">An outlier in one column is different from a row that is unusual only in combination with others.</p>
     <div class="grid sm:grid-cols-2 gap-4">
       <button data-mode="univariate" class="card text-left hover:shadow-md transition">
         <div class="text-3xl mb-2">1D</div>
-        <div class="text-lg font-semibold">Univariate</div>
+        <div class="text-lg font-semibold">Univariate <button type="button" class="hint-trigger" data-hint-key="mode" aria-label="Explain the math">?</button></div>
         <p class="text-sm text-slate-600 mt-2">One numeric column. Flags values that are extreme on their own scale.</p>
       </button>
       <button data-mode="multivariate" class="card text-left hover:shadow-md transition">
         <div class="text-3xl mb-2">N&times;D</div>
-        <div class="text-lg font-semibold">Multivariate</div>
+        <div class="text-lg font-semibold">Multivariate <button type="button" class="hint-trigger" data-hint-key="mode" aria-label="Explain the math">?</button></div>
         <p class="text-sm text-slate-600 mt-2">Multiple numeric columns. Catches rows that are odd in <em>combination</em>, even if each value is normal alone.</p>
       </button>
     </div>
     <div class="mt-8 card">
       <h3 class="font-semibold mb-2">Sample data</h3>
-      <p class="text-sm text-slate-600 mb-3">Two CSVs with known injected outliers so you can sanity-check the detectors.</p>
-      <div class="flex flex-wrap gap-3">
-        <a class="underline text-blue-700 text-sm" href="/sample/univariate_demo.csv">univariate_demo.csv</a>
-        <a class="underline text-blue-700 text-sm" href="/sample/multivariate_demo.csv">multivariate_demo.csv</a>
+      <p class="text-sm text-slate-600 mb-3">Course samples (<code>sample_1</code>&ndash;<code>sample_4</code>) plus two demo files with known injected outliers.</p>
+      <div class="grid sm:grid-cols-2 gap-x-6 gap-y-2">
+        <div>
+          <div class="text-xs uppercase text-slate-500 font-semibold mb-1">Course samples</div>
+          <div class="flex flex-col gap-1">
+            <a class="underline text-blue-700 text-sm" href="/sample/sample_1.csv">sample_1.csv <span class="text-slate-400">(24 rows)</span></a>
+            <a class="underline text-blue-700 text-sm" href="/sample/sample_2.csv">sample_2.csv <span class="text-slate-400">(40 rows)</span></a>
+            <a class="underline text-blue-700 text-sm" href="/sample/sample_3.csv">sample_3.csv <span class="text-slate-400">(40 rows)</span></a>
+            <a class="underline text-blue-700 text-sm" href="/sample/sample_4.csv">sample_4.csv <span class="text-slate-400">(80 rows)</span></a>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs uppercase text-slate-500 font-semibold mb-1">Reference demos</div>
+          <div class="flex flex-col gap-1">
+            <a class="underline text-blue-700 text-sm" href="/sample/univariate_demo.csv">univariate_demo.csv</a>
+            <a class="underline text-blue-700 text-sm" href="/sample/multivariate_demo.csv">multivariate_demo.csv</a>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -81,13 +130,20 @@
     <h2 class="text-2xl font-bold mb-1">Upload &amp; configure</h2>
     <p class="text-slate-600 mb-6"><span id="mode-label" class="font-semibold"></span> mode</p>
 
-    <div id="dropzone" class="dropzone bg-white">
-      <p class="text-slate-600">Drag a <strong>CSV</strong> or <strong>XLSX</strong> here, or</p>
-      <label class="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded cursor-pointer hover:bg-blue-700">
-        Choose file
-        <input id="file-input" type="file" accept=".csv,.xlsx,.xlsm" class="hidden" />
-      </label>
-      <p id="file-meta" class="text-xs text-slate-500 mt-2"></p>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div id="dropzone" class="dropzone bg-white">
+        <p class="text-slate-600">Drag a <strong>CSV</strong> or <strong>XLSX</strong> here, or</p>
+        <label class="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded cursor-pointer hover:bg-blue-700">
+          Choose file
+          <input id="file-input" type="file" accept=".csv,.xlsx,.xlsm" class="hidden" />
+        </label>
+        <p id="file-meta" class="text-xs text-slate-500 mt-2"></p>
+      </div>
+      <div class="card">
+        <h3 class="font-semibold mb-1">Or pick a sample</h3>
+        <p class="text-xs text-slate-500 mb-3">Loads server-side &mdash; no download/upload needed.</p>
+        <div id="sample-list" class="space-y-2"></div>
+      </div>
     </div>
 
     <div id="preview-wrap" class="hidden mt-6">
@@ -103,7 +159,7 @@
         </div>
         <div class="card space-y-4">
           <div>
-            <label class="text-sm font-semibold">Strictness <span class="text-slate-400 text-xs">(MAD &amp; IQR)</span></label>
+            <label class="text-sm font-semibold">Strictness <span class="text-slate-400 text-xs">(MAD &amp; IQR)</span><button type="button" class="hint-trigger" data-hint-key="strictness" aria-label="Explain the math">?</button></label>
             <div class="flex gap-2 mt-1" id="strictness-pills">
               <button data-val="lenient"  class="strictness-pill px-3 py-1 rounded border text-sm">Lenient</button>
               <button data-val="balanced" class="strictness-pill px-3 py-1 rounded border text-sm">Balanced</button>
@@ -111,21 +167,21 @@
             </div>
           </div>
           <div>
-            <label class="text-sm font-semibold">Contamination <span class="text-slate-400 text-xs">(Isolation Forest)</span></label>
+            <label class="text-sm font-semibold">Contamination <span class="text-slate-400 text-xs">(Isolation Forest)</span><button type="button" class="hint-trigger" data-hint-key="contamination" aria-label="Explain the math">?</button></label>
             <div class="flex items-center gap-2">
               <input id="contam-slider" type="range" min="1" max="20" step="1" value="5" class="w-full" />
               <span id="contam-val" class="w-12 text-right text-sm">0.05</span>
             </div>
           </div>
           <div>
-            <label class="text-sm font-semibold">Iterations <span class="text-slate-400 text-xs">(Iterative mean/std)</span></label>
+            <label class="text-sm font-semibold">Iterations <span class="text-slate-400 text-xs">(Iterative mean/std)</span><button type="button" class="hint-trigger" data-hint-key="iterations" aria-label="Explain the math">?</button></label>
             <div class="flex items-center gap-2">
               <input id="iter-slider" type="range" min="1" max="100" step="1" value="20" class="w-full" />
               <span id="iter-val" class="w-12 text-right text-sm">20</span>
             </div>
           </div>
           <div>
-            <label class="text-sm font-semibold">Cleaned download</label>
+            <label class="text-sm font-semibold">Cleaned download<button type="button" class="hint-trigger" data-hint-key="dl-action" aria-label="Explain the math">?</button></label>
             <div class="flex gap-2 mt-1">
               <label class="text-sm"><input type="radio" name="dl-action" value="flag" checked> Flag rows</label>
               <label class="text-sm"><input type="radio" name="dl-action" value="remove"> Remove outliers</label>
@@ -154,7 +210,7 @@
       </div>
       <div class="grid md:grid-cols-3 gap-4">
         <div>
-          <label class="text-sm font-semibold">Strictness</label>
+          <label class="text-sm font-semibold">Strictness<button type="button" class="hint-trigger" data-hint-key="strictness" aria-label="Explain the math">?</button></label>
           <div class="flex gap-2 mt-1" id="live-strictness">
             <button data-val="lenient"  class="live-strict px-3 py-1 rounded border text-sm">Lenient</button>
             <button data-val="balanced" class="live-strict px-3 py-1 rounded border text-sm">Balanced</button>
@@ -162,14 +218,14 @@
           </div>
         </div>
         <div>
-          <label class="text-sm font-semibold">Contamination</label>
+          <label class="text-sm font-semibold">Contamination<button type="button" class="hint-trigger" data-hint-key="contamination" aria-label="Explain the math">?</button></label>
           <div class="flex items-center gap-2">
             <input id="live-contam" type="range" min="1" max="20" step="1" value="5" class="w-full" />
             <span id="live-contam-val" class="w-12 text-right text-sm">0.05</span>
           </div>
         </div>
         <div>
-          <label class="text-sm font-semibold">Iterations</label>
+          <label class="text-sm font-semibold">Iterations<button type="button" class="hint-trigger" data-hint-key="iterations" aria-label="Explain the math">?</button></label>
           <div class="flex items-center gap-2">
             <input id="live-iter" type="range" min="1" max="100" step="1" value="20" class="w-full" />
             <span id="live-iter-val" class="w-12 text-right text-sm">20</span>
@@ -183,13 +239,13 @@
 
     <!-- Main chart -->
     <div class="card mb-6">
-      <h3 class="font-semibold mb-2" id="main-chart-title">Distribution</h3>
+      <h3 class="font-semibold mb-2"><span id="main-chart-title">Distribution</span><button type="button" class="hint-trigger" data-hint-key="main-chart" aria-label="Explain the math">?</button></h3>
       <div id="main-chart" style="height: 420px;"></div>
     </div>
 
     <!-- Convergence chart -->
     <div class="card mb-6">
-      <h3 class="font-semibold mb-2">Iterative mean / std convergence</h3>
+      <h3 class="font-semibold mb-2">Iterative mean / std convergence<button type="button" class="hint-trigger" data-hint-key="convergence" aria-label="Explain the math">?</button></h3>
       <div id="conv-chart" style="height: 380px;"></div>
       <div id="conv-tip" class="mt-2 text-sm bg-amber-50 border border-amber-200 rounded p-2"></div>
     </div>
@@ -216,7 +272,7 @@
 
     <!-- Downloads -->
     <div class="card mb-12 flex flex-wrap gap-3 items-center">
-      <h3 class="font-semibold mr-2">Downloads</h3>
+      <h3 class="font-semibold mr-2">Downloads<button type="button" class="hint-trigger" data-hint-key="dl-action" aria-label="Explain the math">?</button></h3>
       <label class="text-sm"><input type="radio" name="dl-action2" value="flag" checked> Flag rows</label>
       <label class="text-sm"><input type="radio" name="dl-action2" value="remove"> Remove outliers</label>
       <button id="dl-csv" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm">Download CSV</button>
@@ -229,6 +285,157 @@
 <div id="toast" class="toast"></div>
 
 <script>
+// =============== HINTS (math behind every control) ===============
+const HINTS = {
+  "mode": `
+    <h5>Univariate vs Multivariate</h5>
+    <p><strong>Univariate</strong>: works on one column at a time. A row is "weird" if its single value is far from the column's center.</p>
+    <p><strong>Multivariate</strong>: works on multiple columns together. A row can have perfectly normal individual values yet be unusual <em>in combination</em> (e.g. a person 200 cm tall weighing 50 kg). Isolation Forest is run natively on the full matrix; MAD / IQR / Iterative are applied per column and a row is flagged for that detector if any column flags it.</p>
+  `,
+  "strictness": `
+    <h5>Strictness (affects MAD &amp; IQR only)</h5>
+    <p>One pill sets two thresholds at once. Lower values flag more aggressively.</p>
+    <p><strong>Modified Z-Score (MAD)</strong>: flag when <code>|M_i| &gt; τ</code> where</p>
+    <div class="formula">M_i = 0.6745 · (x_i − median) / MAD</div>
+    <p><strong>IQR fences</strong>: flag when x is outside</p>
+    <div class="formula">[Q1 − k·IQR,  Q3 + k·IQR]</div>
+    <ul>
+      <li>Lenient — τ = 4.0, k = 2.0</li>
+      <li>Balanced — τ = 3.5, k = 1.5 (default)</li>
+      <li>Strict — τ = 3.0, k = 1.0</li>
+    </ul>
+    <p class="small">Does not affect Isolation Forest or the Iterative method.</p>
+  `,
+  "contamination": `
+    <h5>Contamination (affects Isolation Forest only)</h5>
+    <p>Expected fraction of the data that is anomalous. Sets the score threshold so roughly this fraction gets flagged.</p>
+    <p><strong>How Isolation Forest works</strong>: build 200 random binary trees. At each node, pick a feature uniformly at random and a split value uniformly between that feature's min and max. Recurse until each point is alone. Outliers reach leaves in fewer splits.</p>
+    <div class="formula">s(x) = 2^( − E(h(x)) / c(n) )</div>
+    <p><code>E(h(x))</code> = average path length to isolate x; <code>c(n)</code> = expected path length for n samples in an unsuccessful BST search. Higher score → more anomalous.</p>
+    <p class="small">Range 0.01 .. 0.20. Higher contamination flags more points.</p>
+  `,
+  "iterations": `
+    <h5>Iterations (affects the Iterative mean/std method only)</h5>
+    <p>Start with μ₀ = mean(x), σ₀ = std(x). For i = 1 .. I, with cutoff</p>
+    <div class="formula">f_i = (I − i) / 10  (in sigmas)</div>
+    <ol class="list-decimal pl-5 my-1">
+      <li>Drop survivors where <code>|x − μ_{i−1}| &gt; f_i · σ_{i−1}</code></li>
+      <li>Recompute μ_i, σ_i from the rest</li>
+    </ol>
+    <p>I controls both the run length <em>and</em> the threshold schedule because the cutoff depends on I.</p>
+    <p><strong>Vote nuance</strong>: because f_I = 0, the method always converges to (nearly) zero survivors given enough I. To stop it from dominating the ensemble vote, only points removed while <code>f_i ≥ 1.5</code> are vote-eligible. The Results page surfaces both <em>total_removed</em> and <em>flagged_for_vote</em>.</p>
+  `,
+  "dl-action": `
+    <h5>Cleaned download</h5>
+    <p><strong>Flag rows</strong>: keep every row; append <code>_verdict</code> and <code>_vote_count</code> columns so you can filter downstream.</p>
+    <p><strong>Remove outliers</strong>: drop any row whose verdict isn't <em>normal</em> (i.e. anything with ≥1 vote against it). Both <em>Possible</em> and <em>High-confidence</em> rows are removed.</p>
+    <p class="small">The JSON report download always includes everything regardless of this setting.</p>
+  `,
+  "main-chart": `
+    <h5>Main chart</h5>
+    <p><strong>Univariate</strong>: a boxplot of the column plus a per-row scatter coloured by verdict. Red = High-confidence, amber = Possible, green = Normal.</p>
+    <p><strong>Multivariate</strong>: a 2-D PCA projection of the standardised numeric matrix (columns are mean-centred and unit-scaled before PCA), plus per-column boxplots. PCA picks the two orthogonal directions of maximum variance — outliers tend to land away from the dense cluster regardless of which original feature they're unusual in.</p>
+  `,
+  "convergence": `
+    <h5>Iterative convergence chart</h5>
+    <p><strong>Univariate</strong>: μ on the left axis (blue × markers), σ on the right axis (red circles). Both refer to the survivor set after each iteration.</p>
+    <p><strong>Multivariate</strong>: σ_i / σ_0 per column on one 0..1 axis so different-scale columns are visually comparable.</p>
+    <p><strong>K (dashed line)</strong>: the first iteration where the relative drop in σ falls below 1%, i.e. the survivor set has stabilised. The tip box compares your I to K.</p>
+  `,
+  "mad": `
+    <h5>Modified Z-Score (Iglewicz &amp; Hoaglin)</h5>
+    <div class="formula">M_i = 0.6745 · (x_i − median) / MAD<br/>MAD = median(|x_i − median|)</div>
+    <p>The factor <code>0.6745 = 1/Φ⁻¹(0.75)</code> makes MAD a consistent estimator of σ for normal data, so |M| is directly comparable to a standard z-score.</p>
+    <p>Flag when <code>|M_i| &gt; τ</code>. Robust to up to ~50% contamination of the data.</p>
+    <p><strong>Fallback when MAD = 0</strong> (e.g. half the values are identical):</p>
+    <div class="formula">M_i = 0.6745 · (x_i − median) / (1.2533 · mean(|x_i − median|))</div>
+    <p class="small">1.2533 = √(π/2) is the analogous consistency factor for the mean absolute deviation.</p>
+  `,
+  "iqr": `
+    <h5>IQR fences (Tukey)</h5>
+    <div class="formula">Q1 = 25th percentile<br/>Q3 = 75th percentile<br/>IQR = Q3 − Q1<br/>fences = [Q1 − k·IQR,  Q3 + k·IQR]</div>
+    <p>Flag any point outside the fences. Tukey's classic choice is <code>k = 1.5</code>, which leaves ~0.7% of N(0,1) data outside.</p>
+    <p>Robust because quartiles aren't pulled around by extreme values the way the mean is.</p>
+  `,
+  "iso": `
+    <h5>Isolation Forest (Liu, Ting &amp; Zhou, 2008)</h5>
+    <p>Build n_estimators = 200 random binary trees:</p>
+    <ul>
+      <li>At each internal node, pick a feature uniformly at random.</li>
+      <li>Pick a split value uniformly between that feature's min and max on the rows reaching the node.</li>
+      <li>Recurse until every point is alone in a leaf.</li>
+    </ul>
+    <p>Anomaly score for point x:</p>
+    <div class="formula">s(x) = 2^( − E(h(x)) / c(n) )</div>
+    <p>Outliers tend to be isolated in fewer splits → shorter average path → higher s(x). The <em>contamination</em> parameter picks a quantile threshold on s(x).</p>
+    <p class="small">For the multivariate mode this runs natively on the full matrix — it handles feature interactions without any per-column work.</p>
+  `,
+  "itr": `
+    <h5>Iterative mean/std (FSCT 7910 reference PDF)</h5>
+    <p>Initialise μ₀ = mean(x), σ₀ = std(x). Maintain a survivor set S; initially S = all points. For i = 1 .. I:</p>
+    <div class="formula">f_i = (I − i) / 10<br/>S_i = { x ∈ S_{i−1} : |x − μ_{i−1}| ≤ f_i · σ_{i−1} }<br/>μ_i = mean(S_i),  σ_i = std(S_i)</div>
+    <p>Because f_I = 0, the method always shrinks S to (nearly) zero given enough I — it is designed to converge.</p>
+    <p><strong>Vote-eligibility</strong>: a removed point counts toward the ensemble vote <em>only</em> if it was killed while <code>f_i ≥ 1.5</code>. This stops the detector from dominating once I is large.</p>
+    <p>The card surfaces both <em>total_removed</em> (everything dropped) and <em>flagged_for_vote</em> (the ≥1.5σ kills).</p>
+    <p><strong>K (go-flat)</strong>: smallest i where <code>(σ_{i−1} − σ_i) / σ_{i−1} &lt; 0.01</code>. Past K, additional iterations just trim clean data.</p>
+  `,
+  "vote": `
+    <h5>Voting ensemble</h5>
+    <p>Each of the four detectors independently outputs 0 or 1 per row. The vote count is the sum (0..4).</p>
+    <ul>
+      <li><strong>0 flags</strong> → Normal</li>
+      <li><strong>1 flag</strong> → Possible</li>
+      <li><strong>≥ 2 flags</strong> → High-confidence</li>
+    </ul>
+    <p>For multivariate mode, MAD / IQR / Iterative are run per column and a row is flagged for the method if any column flagged it (OR). Isolation Forest runs natively on the full matrix.</p>
+  `,
+};
+
+function hintIcon(key) {
+  return `<button type="button" class="hint-trigger" data-hint-key="${key}" aria-label="Explain the math">?</button>`;
+}
+
+function setupHints() {
+  let popover = document.getElementById("hint-popover");
+  if (!popover) {
+    popover = document.createElement("div");
+    popover.id = "hint-popover";
+    popover.className = "hint-popover";
+    document.body.appendChild(popover);
+  }
+  document.body.addEventListener("click", (e) => {
+    const trigger = e.target.closest(".hint-trigger");
+    if (trigger) {
+      e.stopPropagation();
+      const key = trigger.dataset.hintKey;
+      const content = HINTS[key];
+      if (!content) return;
+      if (popover.dataset.openKey === key && popover.classList.contains("open")) {
+        popover.classList.remove("open");
+        popover.dataset.openKey = "";
+        return;
+      }
+      popover.innerHTML = content;
+      popover.dataset.openKey = key;
+      const rect = trigger.getBoundingClientRect();
+      const popWidth = Math.min(380, window.innerWidth * 0.92);
+      let left = window.scrollX + rect.left;
+      if (left + popWidth > window.scrollX + window.innerWidth - 12) {
+        left = window.scrollX + window.innerWidth - popWidth - 12;
+      }
+      popover.style.top  = (window.scrollY + rect.bottom + 6) + "px";
+      popover.style.left = left + "px";
+      popover.classList.add("open");
+      return;
+    }
+    if (!e.target.closest("#hint-popover")) {
+      popover.classList.remove("open");
+      popover.dataset.openKey = "";
+    }
+  });
+  window.addEventListener("scroll", () => { popover.classList.remove("open"); popover.dataset.openKey = ""; }, true);
+}
+
 // =============== STATE ===============
 const state = {
   mode: null,           // "univariate" | "multivariate"
@@ -290,11 +497,75 @@ $("nav-upload").onclick  = () => { if (state.sessionId) goto("upload"); else got
 $("nav-results").onclick = () => { if (state.result) goto("results"); else toast("No analysis yet", "err"); };
 $("back-home").onclick   = () => goto("home");
 
+const SAMPLES = {
+  univariate: [
+    { name: "sample_1.csv", label: "sample_1.csv (24 rows)" },
+    { name: "sample_2.csv", label: "sample_2.csv (40 rows)" },
+    { name: "sample_3.csv", label: "sample_3.csv (40 rows)" },
+    { name: "sample_4.csv", label: "sample_4.csv (80 rows)" },
+    { name: "univariate_demo.csv", label: "univariate_demo.csv (injected spikes)" },
+  ],
+  multivariate: [
+    { name: "multivariate_demo.csv", label: "multivariate_demo.csv (height/weight/HR)" },
+  ],
+};
+
+function renderSampleList() {
+  const list = $("sample-list");
+  list.innerHTML = "";
+  const items = SAMPLES[state.mode] || [];
+  if (!items.length) {
+    list.innerHTML = '<p class="text-xs text-slate-500">No samples for this mode.</p>';
+    return;
+  }
+  items.forEach(s => {
+    const btn = document.createElement("button");
+    btn.className = "w-full text-left px-3 py-2 border rounded hover:bg-slate-50 text-sm flex items-center justify-between";
+    btn.innerHTML = `<span>${s.label}</span><span class="text-xs text-blue-600">Load &rarr;</span>`;
+    btn.onclick = () => loadSample(s.name);
+    list.appendChild(btn);
+  });
+}
+
+async function loadSample(name) {
+  showOverlay(true);
+  try {
+    const r = await fetch("/load-sample", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name }),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({detail: "load failed"}));
+      throw new Error(e.detail || "load failed");
+    }
+    const data = await r.json();
+    applyUploadResponse(data);
+  } catch (e) {
+    toast(e.message, "err");
+  } finally {
+    showOverlay(false);
+  }
+}
+
+function applyUploadResponse(data) {
+  state.sessionId = data.session_id;
+  state.filename = data.filename;
+  state.numericCols = data.numeric_columns;
+  state.selectedCols = state.mode === "univariate" ? [data.numeric_columns[0]] : data.numeric_columns.slice(0, 2);
+  $("file-meta").textContent = `${data.filename} — ${data.rows} rows, ${data.columns.length} cols (${data.numeric_columns.length} numeric)`;
+  renderPreview(data.columns, data.preview);
+  renderColumnPicker(data.numeric_columns);
+  show("preview-wrap");
+  setActiveStrictness("balanced", "strictness-pill");
+}
+
 document.querySelectorAll("#page-home button[data-mode]").forEach(btn => {
   btn.onclick = () => {
     state.mode = btn.dataset.mode;
     $("mode-label").textContent = state.mode === "univariate" ? "Univariate" : "Multivariate";
     $("col-plural").textContent = state.mode === "univariate" ? "" : "(s)";
+    renderSampleList();
     goto("upload");
   };
 });
@@ -318,16 +589,7 @@ async function handleFile(file) {
       const e = await r.json().catch(()=>({detail:"upload failed"}));
       throw new Error(e.detail || "upload failed");
     }
-    const data = await r.json();
-    state.sessionId = data.session_id;
-    state.filename = data.filename;
-    state.numericCols = data.numeric_columns;
-    state.selectedCols = state.mode === "univariate" ? [data.numeric_columns[0]] : data.numeric_columns.slice(0, 2);
-    $("file-meta").textContent = `${data.filename} — ${data.rows} rows, ${data.columns.length} cols (${data.numeric_columns.length} numeric)`;
-    renderPreview(data.columns, data.preview);
-    renderColumnPicker(data.numeric_columns);
-    show("preview-wrap");
-    setActiveStrictness("balanced", "strictness-pill");
+    applyUploadResponse(await r.json());
   } catch (e) {
     toast(e.message, "err");
   } finally {
@@ -658,10 +920,11 @@ function renderExplanations() {
 
   const safe = (obj, key, d=3) => obj && (key in obj) ? fmt(obj[key], d) : "—";
 
-  function card(title, body, footer="") {
+  function card(title, body, footer="", hintKey="") {
     const div = document.createElement("div");
     div.className = "card";
-    div.innerHTML = `<h4 class="font-semibold mb-2">${title}</h4>${body}${footer ? `<div class="mt-2 text-xs text-slate-500">${footer}</div>` : ""}`;
+    const icon = hintKey ? ` ${hintIcon(hintKey)}` : "";
+    div.innerHTML = `<h4 class="font-semibold mb-2">${title}${icon}</h4>${body}${footer ? `<div class="mt-2 text-xs text-slate-500">${footer}</div>` : ""}`;
     grid.appendChild(div);
   }
 
@@ -673,21 +936,21 @@ function renderExplanations() {
         <li>MAD = <strong>${fmt(m.mad)}</strong>${m.fallback_used ? " <span class='text-amber-600'>(fallback)</span>" : ""}</li>
         <li>τ (threshold) = <strong>${fmt(m.tau,2)}</strong></li>
         <li>flagged = <strong>${m.flagged}</strong></li>
-      </ul>`);
+      </ul>`, "", "mad");
     card("IQR fences", `
       <ul class="text-sm space-y-1">
         <li>Q1 = <strong>${fmt(q.q1)}</strong>, Q3 = <strong>${fmt(q.q3)}</strong></li>
         <li>IQR = <strong>${fmt(q.iqr)}</strong>, k = <strong>${fmt(q.k,2)}</strong></li>
         <li>fences = [<strong>${fmt(q.lower_fence)}</strong>, <strong>${fmt(q.upper_fence)}</strong>]</li>
         <li>flagged = <strong>${q.flagged}</strong></li>
-      </ul>`);
+      </ul>`, "", "iqr");
     card("Isolation Forest", `
       <ul class="text-sm space-y-1">
         <li>contamination = <strong>${fmt(iso.contamination,2)}</strong></li>
         <li>trees = <strong>${iso.n_estimators}</strong></li>
         <li>score threshold = <strong>${fmt(iso.score_threshold)}</strong></li>
         <li>flagged = <strong>${iso.flagged}</strong></li>
-      </ul>`);
+      </ul>`, "", "iso");
     card("Iterative mean/std", `
       <ul class="text-sm space-y-1">
         <li>I (iterations) = <strong>${it.iterations}</strong></li>
@@ -696,7 +959,8 @@ function renderExplanations() {
         <li>flagged for vote (f<sub>i</sub> ≥ 1.5) = <strong>${it.flagged_for_vote}</strong></li>
         <li>K (go-flat) = <strong>${it.K_flat ?? "—"}</strong></li>
       </ul>`,
-      `Note: only removals while the threshold was at least 1.5σ count toward the vote.`);
+      `Note: only removals while the threshold was at least 1.5σ count toward the vote.`,
+      "itr");
   } else {
     // multivariate
     const iso = r.iso.stats;
@@ -712,7 +976,7 @@ function renderExplanations() {
           <div>iter final μ/σ</div><div>${fmt(pc.itr.stats.final_mu)} / ${fmt(pc.itr.stats.final_sigma)}</div>
           <div>iter total removed</div><div>${pc.itr.stats.total_removed}</div>
           <div>iter for vote</div><div>${pc.itr.stats.flagged_for_vote}</div>
-        </div>`);
+        </div>`, "", "mad");
     });
     card("Isolation Forest (multivariate)", `
       <ul class="text-sm space-y-1">
@@ -721,7 +985,8 @@ function renderExplanations() {
         <li>score threshold = <strong>${fmt(iso.score_threshold)}</strong></li>
         <li>flagged = <strong>${iso.flagged}</strong></li>
       </ul>`,
-      `IsoForest runs on the full numeric matrix, not column-by-column.`);
+      `IsoForest runs on the full numeric matrix, not column-by-column.`,
+      "iso");
   }
 
   // Vote tallies card
@@ -735,7 +1000,8 @@ function renderExplanations() {
         <tr><td>Isolation Forest</td><td>${v.iso}</td></tr>
         <tr><td>Iterative (vote-eligible)</td><td>${v.itr}</td></tr>
       </tbody>
-    </table>`, `Verdict: 0 flags = Normal, 1 = Possible, ≥2 = High-confidence.`);
+    </table>`, `Verdict: 0 flags = Normal, 1 = Possible, ≥2 = High-confidence.`,
+    "vote");
 }
 
 function flagsForRow(i) {
@@ -870,6 +1136,7 @@ $("dl-json").onclick = () => {
 // initial active strictness style
 setActiveStrictness("balanced", "strictness-pill");
 setActiveStrictness("balanced", "live-strict");
+setupHints();
 </script>
 </body>
 </html>

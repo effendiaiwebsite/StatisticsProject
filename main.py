@@ -478,13 +478,12 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    content = await file.read()
+def _ingest_bytes(content: bytes, filename: str) -> dict[str, Any]:
+    """Parse bytes into a DataFrame, register a session, return the upload-style payload."""
     if not content:
         raise HTTPException(status_code=400, detail="Empty file.")
     try:
-        df = load_table(content, file.filename or "")
+        df = load_table(content, filename or "")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Could not parse file: {exc}")
     if df.empty:
@@ -492,10 +491,9 @@ async def upload(file: UploadFile = File(...)):
     cols = numeric_columns(df)
     if not cols:
         raise HTTPException(status_code=400, detail="No numeric columns detected in file.")
-    # Drop fully-empty numeric rows? Keep them; the user can inspect.
     sid = uuid.uuid4().hex
     SESSIONS[sid] = {
-        "filename": file.filename,
+        "filename": filename,
         "df": df,
         "numeric_columns": cols,
         "result": None,
@@ -504,12 +502,33 @@ async def upload(file: UploadFile = File(...)):
     preview = df.head(10).fillna("").to_dict(orient="records")
     return {
         "session_id": sid,
-        "filename": file.filename,
+        "filename": filename,
         "rows": int(len(df)),
         "columns": list(df.columns),
         "numeric_columns": cols,
         "preview": preview,
     }
+
+
+class LoadSampleRequest(BaseModel):
+    name: str
+
+
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    content = await file.read()
+    return _ingest_bytes(content, file.filename or "")
+
+
+@app.post("/load-sample")
+async def load_sample(req: LoadSampleRequest):
+    safe = os.path.basename(req.name)
+    path = os.path.join("sample_data", safe)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail=f"Unknown sample: {safe}")
+    with open(path, "rb") as f:
+        content = f.read()
+    return _ingest_bytes(content, safe)
 
 
 @app.post("/analyze")
