@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hybrid Outlier Detection</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    .pill { padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .pill-high   { background: #fee2e2; color: #991b1b; }
+    .pill-poss   { background: #fef3c7; color: #92400e; }
+    .pill-norm   { background: #dcfce7; color: #166534; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem; }
+    .stat-num { font-size: 1.75rem; font-weight: 700; }
+    .toast { position: fixed; right: 1rem; bottom: 1rem; z-index: 60; max-width: 24rem; }
+    .toast-item { background: #1f2937; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem; margin-top: 0.5rem; box-shadow: 0 10px 25px rgba(0,0,0,.15); }
+    .toast-item.err { background: #991b1b; }
+    .toast-item.ok  { background: #166534; }
+    .dropzone { border: 2px dashed #cbd5e1; border-radius: 0.75rem; padding: 2rem; text-align: center; transition: 150ms; }
+    .dropzone.over { border-color: #2563eb; background: #eff6ff; }
+    .status-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #94a3b8; margin-right: 0.4rem; }
+    .status-dot.queued   { background: #f59e0b; }
+    .status-dot.updating { background: #3b82f6; animation: pulse 1s infinite; }
+    .status-dot.updated  { background: #16a34a; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.4); display: none; align-items: center; justify-content: center; z-index: 50; }
+    .overlay.on { display: flex; }
+    .spinner { width: 3rem; height: 3rem; border: 4px solid #cbd5e1; border-top-color: #2563eb; border-radius: 9999px; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    table.results th, table.results td { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+    table.results thead th { position: sticky; top: 0; background: #f8fafc; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<header class="bg-white border-b border-slate-200">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold">Hybrid Outlier Detection</h1>
+      <p class="text-xs text-slate-500">MAD + IQR + Isolation Forest + Iterative mean/std &mdash; voting ensemble</p>
+    </div>
+    <nav class="text-sm">
+      <button id="nav-home" class="px-3 py-1 hover:underline">Home</button>
+      <button id="nav-upload" class="px-3 py-1 hover:underline">Upload</button>
+      <button id="nav-results" class="px-3 py-1 hover:underline">Results</button>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+
+  <!-- =====================  HOME  ===================== -->
+  <section id="page-home">
+    <h2 class="text-2xl font-bold mb-2">Pick a mode</h2>
+    <p class="text-slate-600 mb-6">An outlier in one column is different from a row that is unusual only in combination with others.</p>
+    <div class="grid sm:grid-cols-2 gap-4">
+      <button data-mode="univariate" class="card text-left hover:shadow-md transition">
+        <div class="text-3xl mb-2">1D</div>
+        <div class="text-lg font-semibold">Univariate</div>
+        <p class="text-sm text-slate-600 mt-2">One numeric column. Flags values that are extreme on their own scale.</p>
+      </button>
+      <button data-mode="multivariate" class="card text-left hover:shadow-md transition">
+        <div class="text-3xl mb-2">N&times;D</div>
+        <div class="text-lg font-semibold">Multivariate</div>
+        <p class="text-sm text-slate-600 mt-2">Multiple numeric columns. Catches rows that are odd in <em>combination</em>, even if each value is normal alone.</p>
+      </button>
+    </div>
+    <div class="mt-8 card">
+      <h3 class="font-semibold mb-2">Sample data</h3>
+      <p class="text-sm text-slate-600 mb-3">Two CSVs with known injected outliers so you can sanity-check the detectors.</p>
+      <div class="flex flex-wrap gap-3">
+        <a class="underline text-blue-700 text-sm" href="/sample/univariate_demo.csv">univariate_demo.csv</a>
+        <a class="underline text-blue-700 text-sm" href="/sample/multivariate_demo.csv">multivariate_demo.csv</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- =====================  UPLOAD  ===================== -->
+  <section id="page-upload" class="hidden">
+    <h2 class="text-2xl font-bold mb-1">Upload &amp; configure</h2>
+    <p class="text-slate-600 mb-6"><span id="mode-label" class="font-semibold"></span> mode</p>
+
+    <div id="dropzone" class="dropzone bg-white">
+      <p class="text-slate-600">Drag a <strong>CSV</strong> or <strong>XLSX</strong> here, or</p>
+      <label class="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded cursor-pointer hover:bg-blue-700">
+        Choose file
+        <input id="file-input" type="file" accept=".csv,.xlsx,.xlsm" class="hidden" />
+      </label>
+      <p id="file-meta" class="text-xs text-slate-500 mt-2"></p>
+    </div>
+
+    <div id="preview-wrap" class="hidden mt-6">
+      <h3 class="font-semibold mb-2">First 10 rows</h3>
+      <div class="overflow-x-auto card p-2">
+        <table id="preview-table" class="text-xs w-full"></table>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4 mt-6">
+        <div class="card">
+          <h3 class="font-semibold mb-2">Pick column<span id="col-plural">(s)</span></h3>
+          <div id="col-picker" class="space-y-1"></div>
+        </div>
+        <div class="card space-y-4">
+          <div>
+            <label class="text-sm font-semibold">Strictness <span class="text-slate-400 text-xs">(MAD &amp; IQR)</span></label>
+            <div class="flex gap-2 mt-1" id="strictness-pills">
+              <button data-val="lenient"  class="strictness-pill px-3 py-1 rounded border text-sm">Lenient</button>
+              <button data-val="balanced" class="strictness-pill px-3 py-1 rounded border text-sm">Balanced</button>
+              <button data-val="strict"   class="strictness-pill px-3 py-1 rounded border text-sm">Strict</button>
+            </div>
+          </div>
+          <div>
+            <label class="text-sm font-semibold">Contamination <span class="text-slate-400 text-xs">(Isolation Forest)</span></label>
+            <div class="flex items-center gap-2">
+              <input id="contam-slider" type="range" min="1" max="20" step="1" value="5" class="w-full" />
+              <span id="contam-val" class="w-12 text-right text-sm">0.05</span>
+            </div>
+          </div>
+          <div>
+            <label class="text-sm font-semibold">Iterations <span class="text-slate-400 text-xs">(Iterative mean/std)</span></label>
+            <div class="flex items-center gap-2">
+              <input id="iter-slider" type="range" min="1" max="100" step="1" value="20" class="w-full" />
+              <span id="iter-val" class="w-12 text-right text-sm">20</span>
+            </div>
+          </div>
+          <div>
+            <label class="text-sm font-semibold">Cleaned download</label>
+            <div class="flex gap-2 mt-1">
+              <label class="text-sm"><input type="radio" name="dl-action" value="flag" checked> Flag rows</label>
+              <label class="text-sm"><input type="radio" name="dl-action" value="remove"> Remove outliers</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 flex gap-3">
+        <button id="run-btn" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Run analysis</button>
+        <button id="back-home" class="px-5 py-2 border rounded hover:bg-slate-100">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =====================  RESULTS  ===================== -->
+  <section id="page-results" class="hidden">
+    <!-- Live tweak panel (sticky-ish at top of results) -->
+    <div class="card mb-6" id="live-panel">
+      <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+        <div>
+          <h2 class="text-lg font-bold">Live tweak</h2>
+          <p class="text-xs text-slate-500">Sliders re-run with a ~350 ms debounce; strictness pills re-run immediately.</p>
+        </div>
+        <div class="text-xs flex items-center"><span id="status-dot" class="status-dot"></span><span id="status-text">idle</span></div>
+      </div>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <label class="text-sm font-semibold">Strictness</label>
+          <div class="flex gap-2 mt-1" id="live-strictness">
+            <button data-val="lenient"  class="live-strict px-3 py-1 rounded border text-sm">Lenient</button>
+            <button data-val="balanced" class="live-strict px-3 py-1 rounded border text-sm">Balanced</button>
+            <button data-val="strict"   class="live-strict px-3 py-1 rounded border text-sm">Strict</button>
+          </div>
+        </div>
+        <div>
+          <label class="text-sm font-semibold">Contamination</label>
+          <div class="flex items-center gap-2">
+            <input id="live-contam" type="range" min="1" max="20" step="1" value="5" class="w-full" />
+            <span id="live-contam-val" class="w-12 text-right text-sm">0.05</span>
+          </div>
+        </div>
+        <div>
+          <label class="text-sm font-semibold">Iterations</label>
+          <div class="flex items-center gap-2">
+            <input id="live-iter" type="range" min="1" max="100" step="1" value="20" class="w-full" />
+            <span id="live-iter-val" class="w-12 text-right text-sm">20</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="summary-cards"></div>
+
+    <!-- Main chart -->
+    <div class="card mb-6">
+      <h3 class="font-semibold mb-2" id="main-chart-title">Distribution</h3>
+      <div id="main-chart" style="height: 420px;"></div>
+    </div>
+
+    <!-- Convergence chart -->
+    <div class="card mb-6">
+      <h3 class="font-semibold mb-2">Iterative mean / std convergence</h3>
+      <div id="conv-chart" style="height: 380px;"></div>
+      <div id="conv-tip" class="mt-2 text-sm bg-amber-50 border border-amber-200 rounded p-2"></div>
+    </div>
+
+    <!-- Explanation panel -->
+    <div class="grid md:grid-cols-2 gap-4 mb-6" id="explain-grid"></div>
+
+    <!-- Why flagged -->
+    <div class="card mb-6">
+      <h3 class="font-semibold mb-3">Why was each row flagged?</h3>
+      <ul id="why-list" class="text-sm space-y-1 max-h-64 overflow-auto"></ul>
+    </div>
+
+    <!-- Results table -->
+    <div class="card mb-6">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold">Detailed results</h3>
+        <label class="text-sm"><input type="checkbox" id="flag-only"> Flagged only</label>
+      </div>
+      <div class="overflow-auto" style="max-height: 24rem;">
+        <table class="results w-full" id="results-table"></table>
+      </div>
+    </div>
+
+    <!-- Downloads -->
+    <div class="card mb-12 flex flex-wrap gap-3 items-center">
+      <h3 class="font-semibold mr-2">Downloads</h3>
+      <label class="text-sm"><input type="radio" name="dl-action2" value="flag" checked> Flag rows</label>
+      <label class="text-sm"><input type="radio" name="dl-action2" value="remove"> Remove outliers</label>
+      <button id="dl-csv" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm">Download CSV</button>
+      <button id="dl-json" class="px-3 py-1.5 border rounded text-sm">Download JSON report</button>
+    </div>
+  </section>
+</main>
+
+<div id="overlay" class="overlay"><div class="spinner"></div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+// =============== STATE ===============
+const state = {
+  mode: null,           // "univariate" | "multivariate"
+  sessionId: null,
+  filename: null,
+  numericCols: [],
+  selectedCols: [],
+  strictness: "balanced",
+  contamination: 0.05,
+  iterations: 20,
+  result: null,
+  params: null,
+  debounceTimer: null,
+  inFlight: false,
+};
+
+// =============== UTILITIES ===============
+const $ = (id) => document.getElementById(id);
+function show(id) { $(id).classList.remove("hidden"); }
+function hide(id) { $(id).classList.add("hidden"); }
+
+function toast(msg, kind="") {
+  const el = document.createElement("div");
+  el.className = "toast-item " + kind;
+  el.textContent = msg;
+  $("toast").appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function setStatus(s) {
+  const dot = $("status-dot");
+  const txt = $("status-text");
+  dot.classList.remove("queued", "updating", "updated");
+  if (s === "queued")   { dot.classList.add("queued");   txt.textContent = "queued";   }
+  else if (s === "updating") { dot.classList.add("updating"); txt.textContent = "updating..."; }
+  else if (s === "updated")  { dot.classList.add("updated");  txt.textContent = "updated"; }
+  else { txt.textContent = "idle"; }
+}
+
+function showOverlay(on) { $("overlay").classList.toggle("on", on); }
+
+function fmt(x, d=3) {
+  if (x === null || x === undefined) return "—";
+  if (typeof x === "number") {
+    if (!isFinite(x)) return "—";
+    if (Math.abs(x) >= 1000 || (Math.abs(x) < 0.01 && x !== 0)) return x.toExponential(2);
+    return x.toFixed(d);
+  }
+  return String(x);
+}
+
+// =============== NAV ===============
+function goto(page) {
+  ["home", "upload", "results"].forEach(p => $("page-" + p).classList.add("hidden"));
+  $("page-" + page).classList.remove("hidden");
+}
+$("nav-home").onclick    = () => goto("home");
+$("nav-upload").onclick  = () => { if (state.sessionId) goto("upload"); else goto("home"); };
+$("nav-results").onclick = () => { if (state.result) goto("results"); else toast("No analysis yet", "err"); };
+$("back-home").onclick   = () => goto("home");
+
+document.querySelectorAll("#page-home button[data-mode]").forEach(btn => {
+  btn.onclick = () => {
+    state.mode = btn.dataset.mode;
+    $("mode-label").textContent = state.mode === "univariate" ? "Univariate" : "Multivariate";
+    $("col-plural").textContent = state.mode === "univariate" ? "" : "(s)";
+    goto("upload");
+  };
+});
+
+// =============== UPLOAD ===============
+const dz = $("dropzone");
+const fileInput = $("file-input");
+
+["dragenter", "dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
+dz.addEventListener("drop", e => { if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener("change", e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+async function handleFile(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  showOverlay(true);
+  try {
+    const r = await fetch("/upload", { method: "POST", body: fd });
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({detail:"upload failed"}));
+      throw new Error(e.detail || "upload failed");
+    }
+    const data = await r.json();
+    state.sessionId = data.session_id;
+    state.filename = data.filename;
+    state.numericCols = data.numeric_columns;
+    state.selectedCols = state.mode === "univariate" ? [data.numeric_columns[0]] : data.numeric_columns.slice(0, 2);
+    $("file-meta").textContent = `${data.filename} — ${data.rows} rows, ${data.columns.length} cols (${data.numeric_columns.length} numeric)`;
+    renderPreview(data.columns, data.preview);
+    renderColumnPicker(data.numeric_columns);
+    show("preview-wrap");
+    setActiveStrictness("balanced", "strictness-pill");
+  } catch (e) {
+    toast(e.message, "err");
+  } finally {
+    showOverlay(false);
+  }
+}
+
+function renderPreview(cols, rows) {
+  const t = $("preview-table");
+  t.innerHTML = "";
+  const thead = document.createElement("thead");
+  const trh = document.createElement("tr");
+  cols.forEach(c => { const th = document.createElement("th"); th.className="text-left bg-slate-100 px-2 py-1 border-b"; th.textContent = c; trh.appendChild(th); });
+  thead.appendChild(trh);
+  t.appendChild(thead);
+  const tb = document.createElement("tbody");
+  rows.forEach(row => {
+    const tr = document.createElement("tr");
+    cols.forEach(c => { const td = document.createElement("td"); td.className="px-2 py-1 border-b"; td.textContent = row[c]; tr.appendChild(td); });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+}
+
+function renderColumnPicker(numCols) {
+  const wrap = $("col-picker");
+  wrap.innerHTML = "";
+  numCols.forEach((c, idx) => {
+    const id = "col-" + idx;
+    const div = document.createElement("div");
+    if (state.mode === "univariate") {
+      div.innerHTML = `<label class="text-sm"><input type="radio" name="ucol" value="${c}" ${idx===0?"checked":""}> ${c}</label>`;
+    } else {
+      const checked = state.selectedCols.includes(c) ? "checked" : "";
+      div.innerHTML = `<label class="text-sm"><input type="checkbox" value="${c}" ${checked}> ${c}</label>`;
+    }
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("change", () => {
+      if (state.mode === "univariate") {
+        const sel = wrap.querySelector("input[name=ucol]:checked");
+        state.selectedCols = sel ? [sel.value] : [];
+      } else {
+        state.selectedCols = Array.from(wrap.querySelectorAll("input:checked")).map(x => x.value);
+      }
+    });
+  });
+}
+
+function setActiveStrictness(val, klass) {
+  document.querySelectorAll("." + klass).forEach(b => {
+    b.classList.toggle("bg-blue-600", b.dataset.val === val);
+    b.classList.toggle("text-white", b.dataset.val === val);
+    b.classList.toggle("border-blue-600", b.dataset.val === val);
+  });
+}
+
+document.querySelectorAll(".strictness-pill").forEach(b => {
+  b.onclick = () => { state.strictness = b.dataset.val; setActiveStrictness(state.strictness, "strictness-pill"); };
+});
+
+$("contam-slider").addEventListener("input", e => {
+  state.contamination = parseInt(e.target.value, 10) / 100;
+  $("contam-val").textContent = state.contamination.toFixed(2);
+});
+$("iter-slider").addEventListener("input", e => {
+  state.iterations = parseInt(e.target.value, 10);
+  $("iter-val").textContent = state.iterations;
+});
+
+$("run-btn").onclick = async () => {
+  if (!state.selectedCols.length) return toast("Pick at least one column", "err");
+  if (state.mode === "univariate" && state.selectedCols.length !== 1) return toast("Univariate needs exactly one column", "err");
+  await analyze(true);
+  goto("results");
+};
+
+// =============== LIVE PANEL ===============
+document.querySelectorAll(".live-strict").forEach(b => {
+  b.onclick = () => {
+    state.strictness = b.dataset.val;
+    setActiveStrictness(state.strictness, "live-strict");
+    setActiveStrictness(state.strictness, "strictness-pill");
+    triggerLive(true); // immediate
+  };
+});
+$("live-contam").addEventListener("input", e => {
+  state.contamination = parseInt(e.target.value, 10) / 100;
+  $("live-contam-val").textContent = state.contamination.toFixed(2);
+  $("contam-slider").value = e.target.value;
+  $("contam-val").textContent = state.contamination.toFixed(2);
+  triggerLive(false);
+});
+$("live-iter").addEventListener("input", e => {
+  state.iterations = parseInt(e.target.value, 10);
+  $("live-iter-val").textContent = state.iterations;
+  $("iter-slider").value = e.target.value;
+  $("iter-val").textContent = state.iterations;
+  triggerLive(false);
+});
+
+function triggerLive(immediate) {
+  if (state.debounceTimer) clearTimeout(state.debounceTimer);
+  setStatus("queued");
+  const fire = async () => { await analyze(false); };
+  if (immediate) fire();
+  else state.debounceTimer = setTimeout(fire, 350);
+}
+
+// =============== ANALYZE ===============
+async function analyze(showOver) {
+  if (!state.sessionId) return;
+  if (state.inFlight) {
+    // queue another after this one resolves
+    state.debounceTimer = setTimeout(() => analyze(false), 50);
+    return;
+  }
+  state.inFlight = true;
+  setStatus("updating");
+  if (showOver) showOverlay(true);
+  try {
+    const body = {
+      session_id: state.sessionId,
+      mode: state.mode,
+      columns: state.selectedCols,
+      strictness: state.strictness,
+      contamination: state.contamination,
+      iterations: state.iterations,
+    };
+    const r = await fetch("/analyze", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({detail: "analyze failed"}));
+      throw new Error(e.detail || "analyze failed");
+    }
+    const data = await r.json();
+    state.result = data.result;
+    state.params = data.params;
+    renderResults();
+    setStatus("updated");
+  } catch (e) {
+    toast(e.message, "err");
+    setStatus("idle");
+  } finally {
+    state.inFlight = false;
+    if (showOver) showOverlay(false);
+  }
+}
+
+// =============== RENDER RESULTS ===============
+function renderResults() {
+  setActiveStrictness(state.strictness, "live-strict");
+  setActiveStrictness(state.strictness, "strictness-pill");
+  renderSummary();
+  renderMainChart();
+  renderConvergence();
+  renderExplanations();
+  renderWhy();
+  renderTable();
+}
+
+function renderSummary() {
+  const r = state.result;
+  const t = r.vote.tallies;
+  const cards = [
+    {label: "Rows analyzed", val: r.n, cls: ""},
+    {label: "High-confidence", val: t.high, cls: "text-red-700"},
+    {label: "Possible", val: t.possible, cls: "text-amber-700"},
+    {label: "Normal", val: t.normal, cls: "text-green-700"},
+  ];
+  $("summary-cards").innerHTML = cards.map(c =>
+    `<div class="card"><div class="text-xs text-slate-500">${c.label}</div><div class="stat-num ${c.cls}">${c.val}</div></div>`
+  ).join("");
+}
+
+function verdictColor(v) {
+  return v === "high" ? "#dc2626" : v === "possible" ? "#f59e0b" : "#16a34a";
+}
+
+function renderMainChart() {
+  const r = state.result;
+  const el = $("main-chart");
+  Plotly.purge(el);
+
+  if (r.mode === "univariate") {
+    $("main-chart-title").textContent = `Distribution of ${r.column}`;
+    const colors = r.vote.verdict.map(verdictColor);
+    const idx = r.row_index;
+    const traces = [
+      {
+        type: "box", y: r.values, name: r.column,
+        boxpoints: false, marker: {color: "#94a3b8"}, line: {color: "#475569"},
+        xaxis: "x", yaxis: "y",
+      },
+      {
+        type: "scatter", mode: "markers",
+        x: idx, y: r.values,
+        marker: { color: colors, size: 7, line: {width: 1, color: "#1f2937"} },
+        text: r.vote.verdict.map((v,i)=>`row ${idx[i]} — ${v}`),
+        hoverinfo: "text+y", name: "rows",
+        xaxis: "x2", yaxis: "y",
+      },
+    ];
+    const layout = {
+      grid: { rows: 1, columns: 2, pattern: "independent" },
+      xaxis:  { domain: [0.0, 0.2], showticklabels: false },
+      xaxis2: { domain: [0.25, 1.0], title: "row index" },
+      yaxis: { title: r.column },
+      showlegend: false, margin: {t: 20, l: 50, r: 20, b: 40},
+    };
+    Plotly.newPlot(el, traces, layout, {displayModeBar: false, responsive: true});
+  } else {
+    $("main-chart-title").textContent = `PCA 2D projection + per-column boxplots`;
+    const colors = r.vote.verdict.map(verdictColor);
+    const pcaX = r.pca.map(p => p[0]);
+    const pcaY = r.pca.map(p => p[1]);
+
+    const traces = [
+      {
+        type: "scatter", mode: "markers",
+        x: pcaX, y: pcaY,
+        marker: {color: colors, size: 8, line: {width: 1, color: "#1f2937"}},
+        text: r.vote.verdict.map((v,i)=>`row ${r.row_index[i]} — ${v}`),
+        hoverinfo: "text+x+y", name: "rows",
+        xaxis: "x", yaxis: "y",
+      },
+    ];
+    // boxplots for each selected column
+    r.columns.forEach((c, i) => {
+      const colData = r.matrix.map(row => row[i]);
+      traces.push({
+        type: "box", y: colData, name: c,
+        boxpoints: false, marker: {color: "#94a3b8"}, line: {color: "#475569"},
+        xaxis: "x2", yaxis: "y2",
+      });
+    });
+    const layout = {
+      grid: { rows: 1, columns: 2, pattern: "independent" },
+      xaxis:  { domain: [0.0, 0.55], title: "PC1" },
+      yaxis:  { title: "PC2" },
+      xaxis2: { domain: [0.62, 1.0] },
+      yaxis2: { title: "value" },
+      showlegend: false, margin: {t: 20, l: 50, r: 20, b: 40},
+    };
+    Plotly.newPlot(el, traces, layout, {displayModeBar: false, responsive: true});
+  }
+}
+
+function renderConvergence() {
+  const r = state.result;
+  const el = $("conv-chart");
+  Plotly.purge(el);
+
+  let K = null;
+  let traces = [];
+  let layout = { margin: {t: 20, l: 60, r: 60, b: 40}, legend: {orientation: "h"} };
+
+  if (r.mode === "univariate") {
+    const h = r.itr.history;
+    const xs = h.mu.map((_, i) => i);
+    K = r.itr.stats.K_flat;
+    traces.push({
+      x: xs, y: h.mu, name: "mu (mean)", mode: "lines+markers",
+      marker: {symbol: "x", size: 8}, line: {color: "#2563eb"},
+      yaxis: "y",
+    });
+    traces.push({
+      x: xs, y: h.sigma, name: "sigma (std)", mode: "lines+markers",
+      marker: {symbol: "circle", size: 8}, line: {color: "#dc2626"},
+      yaxis: "y2",
+    });
+    layout.xaxis = { title: "iteration" };
+    layout.yaxis  = { title: "mu", titlefont: {color: "#2563eb"}, tickfont: {color: "#2563eb"} };
+    layout.yaxis2 = { title: "sigma", titlefont: {color: "#dc2626"}, tickfont: {color: "#dc2626"},
+                      overlaying: "y", side: "right" };
+  } else {
+    const cv = r.convergence;
+    const xs = cv.f.map((_, i) => i);
+    K = cv.K_flat;
+    const palette = ["#2563eb","#dc2626","#16a34a","#9333ea","#ea580c","#0891b2","#db2777","#65a30d"];
+    let i = 0;
+    for (const col of Object.keys(cv.norm_sigma_per_col)) {
+      traces.push({
+        x: xs, y: cv.norm_sigma_per_col[col],
+        mode: "lines+markers", name: col,
+        line: {color: palette[i % palette.length]},
+      });
+      i++;
+    }
+    layout.xaxis = { title: "iteration" };
+    layout.yaxis = { title: "sigma_i / sigma_0", range: [0, 1.05] };
+  }
+
+  if (K !== null && K !== undefined) {
+    layout.shapes = [{
+      type: "line", x0: K, x1: K, y0: 0, y1: 1, yref: "paper",
+      line: {color: "#475569", dash: "dash"},
+    }];
+    layout.annotations = [{
+      x: K, y: 1, yref: "paper", text: "K=" + K + " (go-flat)",
+      showarrow: false, yanchor: "bottom", bgcolor: "#f1f5f9",
+    }];
+  }
+  Plotly.newPlot(el, traces, layout, {displayModeBar: false, responsive: true});
+
+  // Tip box
+  const I = state.params.iterations;
+  let tip = "";
+  if (K === null || K === undefined) {
+    tip = `K (go-flat point) was not detected in the current ${I} iterations. The threshold may still be doing work; consider increasing iterations.`;
+  } else if (I < K) {
+    tip = `You are under-iterating: K=${K} but you only ran ${I}. Bump iterations up to about ${K} to let the method converge.`;
+  } else if (I > K + 5) {
+    tip = `You are over-iterating: K=${K} but you ran ${I}. Past K the method just chips away at clean data — extra removals are not vote-eligible (f_i < 1.5), but you waste cycles.`;
+  } else {
+    tip = `You are correctly iterating: I=${I} is close to K=${K}. The method has converged and additional iterations would only trim clean data.`;
+  }
+  $("conv-tip").textContent = tip;
+}
+
+function renderExplanations() {
+  const r = state.result;
+  const grid = $("explain-grid");
+  grid.innerHTML = "";
+
+  const safe = (obj, key, d=3) => obj && (key in obj) ? fmt(obj[key], d) : "—";
+
+  function card(title, body, footer="") {
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `<h4 class="font-semibold mb-2">${title}</h4>${body}${footer ? `<div class="mt-2 text-xs text-slate-500">${footer}</div>` : ""}`;
+    grid.appendChild(div);
+  }
+
+  if (r.mode === "univariate") {
+    const m = r.mad.stats, q = r.iqr.stats, iso = r.iso.stats, it = r.itr.stats;
+    card("Modified Z-Score (MAD)", `
+      <ul class="text-sm space-y-1">
+        <li>median = <strong>${fmt(m.median)}</strong></li>
+        <li>MAD = <strong>${fmt(m.mad)}</strong>${m.fallback_used ? " <span class='text-amber-600'>(fallback)</span>" : ""}</li>
+        <li>τ (threshold) = <strong>${fmt(m.tau,2)}</strong></li>
+        <li>flagged = <strong>${m.flagged}</strong></li>
+      </ul>`);
+    card("IQR fences", `
+      <ul class="text-sm space-y-1">
+        <li>Q1 = <strong>${fmt(q.q1)}</strong>, Q3 = <strong>${fmt(q.q3)}</strong></li>
+        <li>IQR = <strong>${fmt(q.iqr)}</strong>, k = <strong>${fmt(q.k,2)}</strong></li>
+        <li>fences = [<strong>${fmt(q.lower_fence)}</strong>, <strong>${fmt(q.upper_fence)}</strong>]</li>
+        <li>flagged = <strong>${q.flagged}</strong></li>
+      </ul>`);
+    card("Isolation Forest", `
+      <ul class="text-sm space-y-1">
+        <li>contamination = <strong>${fmt(iso.contamination,2)}</strong></li>
+        <li>trees = <strong>${iso.n_estimators}</strong></li>
+        <li>score threshold = <strong>${fmt(iso.score_threshold)}</strong></li>
+        <li>flagged = <strong>${iso.flagged}</strong></li>
+      </ul>`);
+    card("Iterative mean/std", `
+      <ul class="text-sm space-y-1">
+        <li>I (iterations) = <strong>${it.iterations}</strong></li>
+        <li>final μ = <strong>${fmt(it.final_mu)}</strong>, final σ = <strong>${fmt(it.final_sigma)}</strong></li>
+        <li>total removed = <strong>${it.total_removed}</strong></li>
+        <li>flagged for vote (f<sub>i</sub> ≥ 1.5) = <strong>${it.flagged_for_vote}</strong></li>
+        <li>K (go-flat) = <strong>${it.K_flat ?? "—"}</strong></li>
+      </ul>`,
+      `Note: only removals while the threshold was at least 1.5σ count toward the vote.`);
+  } else {
+    // multivariate
+    const iso = r.iso.stats;
+    const cols = r.columns;
+    cols.forEach(c => {
+      const pc = r.per_column[c];
+      card(`Column: ${c}`, `
+        <div class="text-sm grid grid-cols-2 gap-x-3 gap-y-1">
+          <div>median</div><div>${fmt(pc.mad.stats.median)}</div>
+          <div>MAD</div><div>${fmt(pc.mad.stats.mad)}${pc.mad.stats.fallback_used ? " <span class='text-amber-600'>(fallback)</span>" : ""}</div>
+          <div>Q1 / Q3</div><div>${fmt(pc.iqr.stats.q1)} / ${fmt(pc.iqr.stats.q3)}</div>
+          <div>fences</div><div>[${fmt(pc.iqr.stats.lower_fence)}, ${fmt(pc.iqr.stats.upper_fence)}]</div>
+          <div>iter final μ/σ</div><div>${fmt(pc.itr.stats.final_mu)} / ${fmt(pc.itr.stats.final_sigma)}</div>
+          <div>iter total removed</div><div>${pc.itr.stats.total_removed}</div>
+          <div>iter for vote</div><div>${pc.itr.stats.flagged_for_vote}</div>
+        </div>`);
+    });
+    card("Isolation Forest (multivariate)", `
+      <ul class="text-sm space-y-1">
+        <li>contamination = <strong>${fmt(iso.contamination,2)}</strong></li>
+        <li>trees = <strong>${iso.n_estimators}</strong></li>
+        <li>score threshold = <strong>${fmt(iso.score_threshold)}</strong></li>
+        <li>flagged = <strong>${iso.flagged}</strong></li>
+      </ul>`,
+      `IsoForest runs on the full numeric matrix, not column-by-column.`);
+  }
+
+  // Vote tallies card
+  const v = r.vote.per_method;
+  card("Vote tallies", `
+    <table class="text-sm w-full">
+      <thead><tr class="text-left text-slate-500"><th>Method</th><th>Rows flagged</th></tr></thead>
+      <tbody>
+        <tr><td>MAD</td><td>${v.mad}</td></tr>
+        <tr><td>IQR</td><td>${v.iqr}</td></tr>
+        <tr><td>Isolation Forest</td><td>${v.iso}</td></tr>
+        <tr><td>Iterative (vote-eligible)</td><td>${v.itr}</td></tr>
+      </tbody>
+    </table>`, `Verdict: 0 flags = Normal, 1 = Possible, ≥2 = High-confidence.`);
+}
+
+function flagsForRow(i) {
+  const r = state.result;
+  if (r.mode === "univariate") {
+    return {
+      MAD: r.mad.flags[i],
+      IQR: r.iqr.flags[i],
+      "Isolation Forest": r.iso.flags[i],
+      "Iterative": r.itr.flags[i],
+    };
+  } else {
+    return {
+      MAD: r.row_flags.mad[i],
+      IQR: r.row_flags.iqr[i],
+      "Isolation Forest": r.row_flags.iso[i],
+      "Iterative": r.row_flags.itr[i],
+    };
+  }
+}
+
+function renderWhy() {
+  const r = state.result;
+  const ul = $("why-list");
+  ul.innerHTML = "";
+  const verdicts = r.vote.verdict;
+  for (let i = 0; i < verdicts.length; i++) {
+    if (verdicts[i] === "normal") continue;
+    const f = flagsForRow(i);
+    const fired = Object.keys(f).filter(k => f[k]);
+    const li = document.createElement("li");
+    const pill = verdicts[i] === "high" ? '<span class="pill pill-high">high</span>' : '<span class="pill pill-poss">possible</span>';
+    li.innerHTML = `Row <strong>${r.row_index[i]}</strong> ${pill} — flagged by: <em>${fired.join(", ") || "(no detector — voted normal)"}</em>`;
+    ul.appendChild(li);
+  }
+  if (!ul.children.length) {
+    ul.innerHTML = '<li class="text-slate-500">No rows were flagged by any detector. 🎉</li>';
+  }
+}
+
+function renderTable() {
+  const r = state.result;
+  const t = $("results-table");
+  t.innerHTML = "";
+  const thead = document.createElement("thead");
+  const trh = document.createElement("tr");
+  const headers = ["row"];
+  if (r.mode === "univariate") {
+    headers.push(r.column);
+  } else {
+    r.columns.forEach(c => headers.push(c));
+  }
+  headers.push("MAD score", "MAD?", "IQR score", "IQR?", "ISO score", "ISO?", "ITER score", "ITER?", "votes", "verdict");
+  headers.forEach(h => { const th = document.createElement("th"); th.className = "text-left bg-slate-100 border-b"; th.textContent = h; trh.appendChild(th); });
+  thead.appendChild(trh);
+  t.appendChild(thead);
+
+  const tb = document.createElement("tbody");
+  const onlyFlagged = $("flag-only").checked;
+  const verdicts = r.vote.verdict;
+  for (let i = 0; i < verdicts.length; i++) {
+    if (onlyFlagged && verdicts[i] === "normal") continue;
+    const tr = document.createElement("tr");
+    tr.className = "border-b hover:bg-slate-50";
+    const cells = [];
+    cells.push(r.row_index[i]);
+    if (r.mode === "univariate") {
+      cells.push(fmt(r.values[i]));
+      cells.push(fmt(r.mad.scores[i]));
+      cells.push(r.mad.flags[i] ? "✓" : "");
+      cells.push(fmt(r.iqr.scores[i]));
+      cells.push(r.iqr.flags[i] ? "✓" : "");
+      cells.push(fmt(r.iso.scores[i]));
+      cells.push(r.iso.flags[i] ? "✓" : "");
+      cells.push(fmt(r.itr.scores[i],2));
+      cells.push(r.itr.flags[i] ? "✓" : "");
+    } else {
+      r.columns.forEach((_, ci) => cells.push(fmt(r.matrix[i][ci])));
+      cells.push("(per col)");
+      cells.push(r.row_flags.mad[i] ? "✓" : "");
+      cells.push("(per col)");
+      cells.push(r.row_flags.iqr[i] ? "✓" : "");
+      cells.push(fmt(r.iso.scores[i]));
+      cells.push(r.iso.flags[i] ? "✓" : "");
+      cells.push("(per col)");
+      cells.push(r.row_flags.itr[i] ? "✓" : "");
+    }
+    cells.push(r.vote.count[i]);
+    const v = verdicts[i];
+    const pillCls = v === "high" ? "pill-high" : v === "possible" ? "pill-poss" : "pill-norm";
+    const pillHtml = `<span class="pill ${pillCls}">${v}</span>`;
+    cells.push(pillHtml);
+    cells.forEach((c, idx) => {
+      const td = document.createElement("td");
+      td.className = "border-b";
+      if (idx === cells.length - 1) td.innerHTML = c; else td.textContent = c;
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb);
+}
+
+$("flag-only").addEventListener("change", renderTable);
+
+// =============== DOWNLOADS ===============
+$("dl-csv").onclick = async () => {
+  const action = document.querySelector("input[name=dl-action2]:checked").value;
+  showOverlay(true);
+  try {
+    const r = await fetch("/download/csv", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ session_id: state.sessionId, action }),
+    });
+    if (!r.ok) throw new Error("download failed");
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = (state.filename || "data") + (action === "remove" ? ".cleaned.csv" : ".flagged.csv");
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast(e.message, "err");
+  } finally {
+    showOverlay(false);
+  }
+};
+$("dl-json").onclick = () => {
+  window.location = "/download/report/" + state.sessionId;
+};
+
+// initial active strictness style
+setActiveStrictness("balanced", "strictness-pill");
+setActiveStrictness("balanced", "live-strict");
+</script>
+</body>
+</html>
