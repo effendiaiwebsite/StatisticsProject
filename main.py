@@ -224,6 +224,7 @@ def detect_iterative(values: np.ndarray, iterations: int) -> dict[str, Any]:
         "scores": score.tolist(),
         "flags": vote_mask.tolist(),                # vote-eligible flags
         "removed": total_removed_mask.tolist(),     # all removals
+        "removed_iter": removed_iter.tolist(),      # round each point was removed (-1 = survived)
         "stats": {
             "iterations": iterations,
             "total_removed": int(total_removed_mask.sum()),

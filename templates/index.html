@@ -73,6 +73,7 @@
       <button id="nav-home" class="px-3 py-1 hover:underline">Home</button>
       <button id="nav-upload" class="px-3 py-1 hover:underline">Upload</button>
       <button id="nav-results" class="px-3 py-1 hover:underline">Results</button>
+      <button id="nav-rounds" class="px-3 py-1 hover:underline">Rounds</button>
     </nav>
   </div>
 </header>
@@ -248,6 +249,7 @@
       <h3 class="font-semibold mb-2">Iterative mean / std convergence<button type="button" class="hint-trigger" data-hint-key="convergence" aria-label="Explain the math">?</button></h3>
       <div id="conv-chart" style="height: 380px;"></div>
       <div id="conv-tip" class="mt-2 text-sm bg-amber-50 border border-amber-200 rounded p-2"></div>
+      <button id="goto-rounds" class="mt-3 px-3 py-1.5 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700">View first 3 rounds of the iterative method &rarr;</button>
     </div>
 
     <!-- Explanation panel -->
@@ -277,6 +279,38 @@
       <label class="text-sm"><input type="radio" name="dl-action2" value="remove"> Remove outliers</label>
       <button id="dl-csv" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm">Download CSV</button>
       <button id="dl-json" class="px-3 py-1.5 border rounded text-sm">Download JSON report</button>
+    </div>
+  </section>
+
+  <!-- =====================  ROUNDS  ===================== -->
+  <section id="page-rounds" class="hidden">
+    <div class="flex items-center justify-between flex-wrap gap-3 mb-2">
+      <div>
+        <h2 class="text-2xl font-bold">First three rounds of the iterative method<button type="button" class="hint-trigger" data-hint-key="itr" aria-label="Explain the math">?</button></h2>
+        <p class="text-slate-600 text-sm">The sample data as it gets processed, round by round. Points outside the band <code>μ ± f<sub>i</sub>·σ</code> are removed that round.</p>
+      </div>
+      <button id="rounds-back" class="px-4 py-2 border rounded hover:bg-slate-100 text-sm">&larr; Back to results</button>
+    </div>
+
+    <div id="rounds-colpick" class="card mb-4 hidden">
+      <label class="text-sm font-semibold mr-2">Column</label>
+      <select id="rounds-col" class="border rounded px-2 py-1 text-sm"></select>
+      <span class="text-xs text-slate-500 ml-2">The iterative method runs per column in multivariate mode.</span>
+    </div>
+
+    <div id="rounds-meta" class="text-sm text-slate-600 mb-4"></div>
+
+    <div class="card mb-4">
+      <h3 class="font-semibold mb-2">Round 1<span id="r1-sub" class="text-xs font-normal text-slate-500 ml-2"></span></h3>
+      <div id="round-1" style="height: 320px;"></div>
+    </div>
+    <div class="card mb-4">
+      <h3 class="font-semibold mb-2">Round 2<span id="r2-sub" class="text-xs font-normal text-slate-500 ml-2"></span></h3>
+      <div id="round-2" style="height: 320px;"></div>
+    </div>
+    <div class="card mb-12">
+      <h3 class="font-semibold mb-2">Round 3<span id="r3-sub" class="text-xs font-normal text-slate-500 ml-2"></span></h3>
+      <div id="round-3" style="height: 320px;"></div>
     </div>
   </section>
 </main>
@@ -489,13 +523,16 @@ function fmt(x, d=3) {
 
 // =============== NAV ===============
 function goto(page) {
-  ["home", "upload", "results"].forEach(p => $("page-" + p).classList.add("hidden"));
+  ["home", "upload", "results", "rounds"].forEach(p => $("page-" + p).classList.add("hidden"));
   $("page-" + page).classList.remove("hidden");
 }
 $("nav-home").onclick    = () => goto("home");
 $("nav-upload").onclick  = () => { if (state.sessionId) goto("upload"); else goto("home"); };
 $("nav-results").onclick = () => { if (state.result) goto("results"); else toast("No analysis yet", "err"); };
+$("nav-rounds").onclick  = () => { if (state.result) { goto("rounds"); renderRounds(); } else toast("No analysis yet", "err"); };
 $("back-home").onclick   = () => goto("home");
+$("rounds-back").onclick = () => goto("results");
+$("goto-rounds").onclick = () => { goto("rounds"); renderRounds(); };
 
 const SAMPLES = {
   univariate: [
@@ -1106,6 +1143,139 @@ function renderTable() {
 }
 
 $("flag-only").addEventListener("change", renderTable);
+
+// =============== ROUNDS PAGE ===============
+function roundsContext() {
+  const r = state.result;
+  if (r.mode === "univariate") {
+    return {
+      itr: r.itr,
+      values: r.values,
+      xidx: r.row_index,
+      label: r.column,
+      columns: null,
+    };
+  }
+  // multivariate: pick a column
+  const sel = $("rounds-col");
+  let col = sel.value;
+  if (!col || !r.columns.includes(col)) col = r.columns[0];
+  const ci = r.columns.indexOf(col);
+  return {
+    itr: r.per_column[col].itr,
+    values: r.matrix.map(row => row[ci]),
+    xidx: r.row_index,
+    label: col,
+    columns: r.columns,
+  };
+}
+
+function drawRound(divId, subId, itr, values, xidx, i, label) {
+  const div = $(divId);
+  Plotly.purge(div);
+  const I = itr.stats.iterations;
+  if (i > I) {
+    $(subId).textContent = `— not run (only ${I} iteration${I === 1 ? "" : "s"} requested)`;
+    div.innerHTML = `<div class="text-sm text-slate-500 p-6">Round ${i} did not run because you requested only ${I} iteration${I === 1 ? "" : "s"}. Increase the iterations slider to at least ${i}.</div>`;
+    return;
+  }
+  const muPrev = itr.history.mu[i - 1];
+  const sigPrev = itr.history.sigma[i - 1];
+  const fI = itr.history.f[i];                  // (I - i) / 10
+  const lo = muPrev - fI * sigPrev;
+  const hi = muPrev + fI * sigPrev;
+
+  const ri = itr.removed_iter;                   // per-point: -1 survived, else round removed
+  const survX = [], survY = [], remX = [], remY = [], remTxt = [];
+  let aliveAtStart = 0;
+  for (let j = 0; j < values.length; j++) {
+    const rr = ri[j];
+    const goneBefore = (rr !== -1) && (rr < i);
+    if (goneBefore) continue;                    // already removed in an earlier round
+    aliveAtStart++;
+    if (rr === i) {                              // removed THIS round
+      remX.push(xidx[j]); remY.push(values[j]);
+      remTxt.push(`row ${xidx[j]} = ${fmt(values[j])} — removed (|x−μ| > ${fmt(fI,2)}σ)`);
+    } else {                                     // survives this round
+      survX.push(xidx[j]); survY.push(values[j]);
+    }
+  }
+  const removedCount = remX.length;
+
+  const xs = xidx;
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const traces = [
+    {
+      type: "scatter", mode: "markers", name: "kept",
+      x: survX, y: survY,
+      marker: { color: "#2563eb", size: 7, line: { width: 1, color: "#1e3a8a" } },
+      hovertemplate: "row %{x}: %{y:.4g}<extra>kept</extra>",
+    },
+    {
+      type: "scatter", mode: "markers", name: "removed this round",
+      x: remX, y: remY,
+      marker: { color: "#dc2626", size: 11, symbol: "x", line: { width: 1 } },
+      text: remTxt, hoverinfo: "text",
+    },
+  ];
+  const layout = {
+    margin: { t: 10, l: 55, r: 20, b: 40 },
+    xaxis: { title: "row index" },
+    yaxis: { title: label },
+    legend: { orientation: "h" },
+    shapes: [
+      { type: "line", x0: xMin, x1: xMax, y0: muPrev, y1: muPrev,
+        line: { color: "#16a34a", width: 2 } },
+      { type: "line", x0: xMin, x1: xMax, y0: hi, y1: hi,
+        line: { color: "#94a3b8", width: 1, dash: "dash" } },
+      { type: "line", x0: xMin, x1: xMax, y0: lo, y1: lo,
+        line: { color: "#94a3b8", width: 1, dash: "dash" } },
+    ],
+    annotations: [
+      { x: xMax, y: muPrev, xanchor: "right", yanchor: "bottom",
+        text: `μ = ${fmt(muPrev)}`, showarrow: false, font: { color: "#16a34a", size: 11 } },
+      { x: xMax, y: hi, xanchor: "right", yanchor: "bottom",
+        text: `μ + ${fmt(fI,2)}σ`, showarrow: false, font: { color: "#64748b", size: 10 } },
+      { x: xMax, y: lo, xanchor: "right", yanchor: "top",
+        text: `μ − ${fmt(fI,2)}σ`, showarrow: false, font: { color: "#64748b", size: 10 } },
+    ],
+  };
+  Plotly.newPlot(div, traces, layout, { displayModeBar: false, responsive: true });
+  $(subId).textContent = `— f${i} = ${fmt(fI,2)}, μ = ${fmt(muPrev)}, σ = ${fmt(sigPrev)}, band [${fmt(lo)}, ${fmt(hi)}], removed ${removedCount} of ${aliveAtStart}`;
+}
+
+function renderRounds() {
+  const r = state.result;
+  if (!r) { toast("No analysis yet", "err"); return; }
+
+  if (r.mode === "multivariate") {
+    const sel = $("rounds-col");
+    const prev = sel.value;
+    sel.innerHTML = "";
+    r.columns.forEach(c => {
+      const o = document.createElement("option");
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
+    if (prev && r.columns.includes(prev)) sel.value = prev;
+    $("rounds-colpick").classList.remove("hidden");
+    sel.onchange = renderRounds;
+  } else {
+    $("rounds-colpick").classList.add("hidden");
+  }
+
+  const ctx = roundsContext();
+  const I = ctx.itr.stats.iterations;
+  $("rounds-meta").innerHTML =
+    `Dataset: <strong>${state.filename || "(uploaded)"}</strong> &middot; column <strong>${ctx.label}</strong> &middot; ` +
+    `I = <strong>${I}</strong> &middot; schedule <code>f<sub>i</sub> = (I − i) / 10</code> &middot; ` +
+    `initial μ = <strong>${fmt(ctx.itr.history.mu[0])}</strong>, σ = <strong>${fmt(ctx.itr.history.sigma[0])}</strong>. ` +
+    `Solid green = current mean; dashed grey = the ±f<sub>i</sub>·σ band; red ✕ = removed that round.`;
+
+  drawRound("round-1", "r1-sub", ctx.itr, ctx.values, ctx.xidx, 1, ctx.label);
+  drawRound("round-2", "r2-sub", ctx.itr, ctx.values, ctx.xidx, 2, ctx.label);
+  drawRound("round-3", "r3-sub", ctx.itr, ctx.values, ctx.xidx, 3, ctx.label);
+}
 
 // =============== DOWNLOADS ===============
 $("dl-csv").onclick = async () => {
